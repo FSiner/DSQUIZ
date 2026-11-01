@@ -309,6 +309,13 @@ body.pp-white #main{background:var(--pp)}
 body.pp-grid #main{background-color:var(--pp);background-image:linear-gradient(var(--pl) 1px,transparent 1px),linear-gradient(90deg,var(--pl) 1px,transparent 1px);background-size:32px 32px}
 body.pp-lined #main{background-color:var(--pp);background-image:linear-gradient(var(--pl) 1px,transparent 1px);background-size:100% 40px;background-position:0 39px}
 body.pp-axis #main{background-color:var(--pp);background-image:linear-gradient(var(--ink),var(--ink)),linear-gradient(var(--ink),var(--ink)),linear-gradient(var(--pl) 1px,transparent 1px),linear-gradient(90deg,var(--pl) 1px,transparent 1px);background-size:100% 2px,2px 100%,32px 32px,32px 32px;background-position:center,center,0 0,0 0;background-repeat:no-repeat,no-repeat,repeat,repeat}
+
+.cls-pick{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+.cls-pick .btn{padding:9px 16px;font-size:17px}
+.pres{display:inline-block;width:9px;height:9px;border-radius:50%;background:#c4c9d4;margin-right:6px;vertical-align:middle}.pres.on{background:#1faa59}
+.rtabs{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 16px}
+.crow{display:flex;gap:8px;align-items:center;margin-bottom:8px}.crow .fld{flex:1;min-width:0}
+.sc .sdel{margin-top:8px}
 </style>
 </head>
 <body>
@@ -324,15 +331,7 @@ body.pp-axis #main{background-color:var(--pp);background-image:linear-gradient(v
  Firebase를 쓰려면 아래에 본인 프로젝트 값을 넣으세요 (databaseURL 필수).
  비워 두면 '로컬 모드'로 동작하며 같은 브라우저 안에서만 동기화됩니다.
  선생님 설정 화면에서 붙여넣어도 되며, 이 경우 QR 주소에 설정이 함께 담겨 학생 기기에도 전달됩니다. */
-const FIREBASE_CONFIG = {
-  apiKey: "AIzaSyCW3JHyH7dg2U0FRSyqfoB4RWlC-Lnfm94",
-  authDomain: "dsquiz-10d5f.firebaseapp.com",
-  databaseURL: "https://dsquiz-10d5f-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "dsquiz-10d5f",
-  storageBucket: "dsquiz-10d5f.firebasestorage.app",
-  messagingSenderId: "268378135107",
-  appId: "1:268378135107:web:6211371ae3e157a8d992f6"
-};;
+const FIREBASE_CONFIG = null;
 /* 선생님 아이디는 내부적으로 '아이디@dsquiz.app' 형태의 Firebase 계정으로 바뀝니다(실제 메일 아님).
    선생님 여부는 서버 규칙이 teachers 명단(uid)으로 판단합니다. */
 const ID_DOMAIN = 'dsquiz.app';
@@ -383,7 +382,8 @@ function initDB() {
       const auth = firebase.auth(); let done = false, gotInit;
       const authInit = new Promise(res => { gotInit = res; });
       const authReady = new Promise(res => auth.onAuthStateChanged(u => { if (!done) { done = true; gotInit(u); } if (u) res(u); }));
-      const anon = () => authInit.then(u => u || auth.signInAnonymously().then(r => r.user));
+      let anonP = null;
+      const anon = () => authInit.then(() => auth.currentUser || (anonP = anonP || auth.signInAnonymously().then(r => { anonP = null; return r.user; }, e => { anonP = null; throw e; })));
       DB = { mode: 'firebase', cfg, auth, authInit, authReady, anon,
         uid: () => auth.currentUser ? auth.currentUser.uid : '',
         email: () => auth.currentUser && !auth.currentUser.isAnonymous ? (auth.currentUser.email || '') : '',
@@ -395,7 +395,7 @@ function initDB() {
         signOut() { return auth.signOut(); },
         on(p, cb) {
           let off = () => {}, dead = false;
-          authReady.then(() => { if (dead) return; const r = root.child(p); const f = r.on('value', s => cb(s.val()), dbErr); off = () => r.off('value', f); });
+          anon().then(() => { if (dead) return; const r = root.child(p); const f = r.on('value', s => cb(s.val()), dbErr); off = () => r.off('value', f); }).catch(dbErr);
           return () => { dead = true; off(); };
         },
         set(p, v) {
@@ -445,8 +445,8 @@ const keyOf = n => n.trim().replace(/[.$#\[\]\/\s]+/g, '_').slice(0, 40);
 
 /* ====== 퀴즈 모델 ====== */
 const newQ = (type = 'mc') => ({ id: uid(), type, text: '', choices: ['', '', '', '', ''], answer: type === 'short' ? '' : 0, hint: '', explain: '' });
-const newQuiz = () => ({ id: uid(), title: '', unit: '', passageTitle: '', passage: '', note: '', questions: [newQ()], published: false, updated: Date.now() });
-const normQuiz = q => { q.questions = (q.questions || []).map(x => { x.choices = x.choices || []; while (x.choices.length < 5) x.choices.push(''); return x; }); q.passage = q.passage || ''; q.note = q.note || ''; return q; };
+const newQuiz = () => ({ id: uid(), title: '', unit: '', passageTitle: '', passage: '', note: '', questions: [newQ()], published: false, pubClasses: [], updated: Date.now() });
+const normQuiz = q => { q.pubClasses = Array.isArray(q.pubClasses) ? q.pubClasses : (q.published ? ['*'] : []); q.published = q.pubClasses.length > 0; q.questions = (q.questions || []).map(x => { x.choices = x.choices || []; while (x.choices.length < 5) x.choices.push(''); return x; }); q.passage = q.passage || ''; q.note = q.note || ''; return q; };
 const visChoices = q => q.choices.map((t, i) => ({ t, i })).filter(c => c.t && c.t.trim());
 const normS = s => String(s == null ? '' : s).replace(/\s+/g, '').toLowerCase();
 function isRight(q, v) {
@@ -475,7 +475,7 @@ function sampleQuiz() {
   const q4 = newQ('short'); q4.text = '"죽어도 아니 눈물 흘리오리다"처럼 속마음과 반대로 말하는 표현법은?'; q4.answer = '반어법,반어'; q4.explain = '속마음과 반대로 표현하는 반어법입니다.';
   return { id: uid(), title: '김소월 「진달래꽃」 감상', unit: '', passageTitle: '김소월, 「진달래꽃」',
     passage: '나 보기가 역겨워\n가실 때에는\n말없이 고이 보내 드리오리다.\n\n영변에 약산\n진달래꽃\n아름 따다 가실 길에 뿌리오리다.\n\n가시는 걸음걸음\n놓인 그 꽃을\n사뿐히 즈려밟고 가시옵소서.\n\n나 보기가 역겨워\n가실 때에는\n{{죽어도 아니 눈물 흘리오리다.}}',
-    questions: [q1, q2, q3, q4], published: false, updated: Date.now() };
+    questions: [q1, q2, q3, q4], published: false, pubClasses: [], updated: Date.now() };
 }
 
 /* ====== 공통 UI ====== */
@@ -495,11 +495,11 @@ function renderHeader() {
   const T = S.role === 'teacher', inApp = !!S.role;
   $('#hdr').style.display = S.view === 'entry' ? 'none' : '';
   $('#hdr').innerHTML = `
-    <div class="brand" data-act="goHome"><span class="logo">DS</span>DSQUIZ<small>${T ? '선생님' : inApp ? esc(S.name) : ''}</small></div>
+    <div class="brand" data-act="goHome"><span class="logo">DS</span>DSQUIZ<small>${T ? '선생님' : inApp ? esc((clsName(S.cls) ? clsName(S.cls) + ' · ' : '') + S.name) : ''}</small></div>
     ${DB.mode === 'local' && T ? '<span class="chip" title="Firebase 미연결">로컬 모드</span>' : ''}
     <button class="btn" data-act="qr">QR 코드</button>
     ${inApp && S.role === 'teacher' ? `<button class="btn ${board.on ? 'on' : ''}" data-act="boardToggle">판서 ${board.on ? '끄기' : '켜기'}</button>` : ''}
-    ${T ? '<button class="btn" data-act="settings">설정</button>' : ''}
+    ${T ? '<button class="btn" data-act="classMgr">반 관리</button><button class="btn" data-act="settings">설정</button>' : ''}
     <button class="btn" data-act="theme">${document.documentElement.dataset.theme === 'dark' ? '라이트' : '다크'}</button>
     ${inApp ? '<button class="btn" data-act="logout">나가기</button>' : ''}`;
 }
@@ -550,14 +550,16 @@ function renderEntry() {
       <button class="btn sm etheme" data-act="theme">${dk ? '라이트' : '다크'}</button>
       <div class="gate-in">
         <h2>입장하기</h2>
-        <p class="mu" style="margin:0 0 26px">이름을 입력하면 선생님이 공개한 퀴즈를 풀 수 있어요.</p>
+        <p class="mu" style="margin:0 0 22px">반을 고르고 이름을 입력하면 선생님이 공개한 퀴즈를 풀 수 있어요.</p>
+        <label class="lbl">반</label>
+        <div id="clsPick">${clsPickHtml()}</div>
         <label class="lbl" for="nameIn">이름</label>
         <input id="nameIn" class="fld" maxlength="20" autocomplete="off" value="${esc(store.get('sq_name', ''))}">
         <button class="btn pri lg" style="width:100%;margin-top:14px" data-act="studentEnter">학생으로 입장</button>
         <div class="sep">선생님이신가요?</div>
         <button class="btn lg" style="width:100%;font-size:17px;padding:12px" data-act="teacherEnter">선생님 모드</button>
       </div>
-      <div class="gate-ft">DSQUIZ · 이름만으로 입장할 수 있습니다</div>
+      <div class="gate-ft">DSQUIZ · 반을 고르고 이름을 입력해 입장합니다</div>
     </section>
   </div>`;
 }
@@ -570,17 +572,46 @@ function askConfirm(msg, ok, label, danger) {
   setTimeout(() => { const y = $('#cfmYes'); if (y) y.focus(); }, 30);
 }
 const A = {};
+/* ====== 반 · 학생 접속 ====== */
+S.classes = {}; S.cls = store.get('sq_cls', '');
+const clsList = () => Object.entries(S.classes || {}).map(([id, c]) => ({ id, name: (c && c.name) || '', o: (c && c.o) || 0 })).sort((a, b) => a.o - b.o || a.name.localeCompare(b.name, 'ko'));
+const clsName = id => (S.classes && S.classes[id] && S.classes[id].name) || '';
+const clsOf = (k, r) => (r && r.cls) || (String(k).includes('__') ? String(k).split('__')[0] : '');
+const isOn = st => !!(st && st.seen && Date.now() - st.seen < 75000);
+function clsPickHtml() {
+  const l = clsList();
+  if (!l.length) return '<div class="mu" style="font-size:15px;margin-bottom:14px">선생님이 아직 반을 만들지 않았습니다. 잠시 뒤 다시 확인해 주세요.</div>';
+  return '<div class="cls-pick">' + l.map(c => `<button class="btn ${S.cls === c.id ? 'on' : ''}" data-act="pickCls" data-id="${c.id}">${esc(c.name)}</button>`).join('') + '</div>';
+}
+function refreshClsPick() { const e = $('#clsPick'); if (e) e.innerHTML = clsPickHtml(); }
+function subClasses() { sub('classes', 'classes', v => { S.classes = v || {}; onClassesChange(); }); }
+function onClassesChange() {
+  refreshClsPick(); renderClsList();
+  if (S.role === 'teacher' && S.view === 'home') { renderGrid(); }
+  else if (S.role === 'teacher' && S.view === 'results') renderResultsBody();
+  else if (S.role === 'student' && Object.keys(S.classes).length && !S.classes[S.cls]) { A.logout(); toast('선택한 반이 없어졌습니다. 다시 입장해 주세요'); }
+}
+A.pickCls = d => { S.cls = d.id; store.set('sq_cls', d.id); refreshClsPick(); const n = $('#nameIn'); if (n && !n.value) n.focus(); };
+let beatT = null, presT = null;
+function beat(off) {
+  if (S.role !== 'student' || !S.key) return Promise.resolve();
+  return Promise.resolve(DB.set('students/' + S.key, { name: S.name, cls: S.cls, ts: S.ts0 || Date.now(), seen: off ? 0 : Date.now() }));
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) beat().catch(() => {}); });
 A.studentEnter = () => {
   const n = ($('#nameIn').value || '').trim();
+  if (!S.classes[S.cls]) { toast('반을 선택해 주세요'); return; }
   if (!n) { toast('이름을 입력해 주세요'); $('#nameIn').focus(); return; }
-  S.role = 'student'; S.name = n; S.key = keyOf(n) || ('s' + uid());
+  S.role = 'student'; S.name = n; S.key = S.cls + '__' + (keyOf(n) || ('s' + uid())); S.ts0 = Date.now();
   store.set('sq_name', n); sess.set('sq_role', 'student');
-  DB.set('students/' + S.key, { name: n, ts: Date.now() });
   startStudent(); go('home');
+  beat().catch(() => { A.logout(); toast('입장하지 못했습니다. 같은 반에 같은 이름이 이미 있거나 연결에 문제가 있습니다. 이름을 바꾸거나 선생님께 삭제를 요청하세요'); });
 };
 function startStudent() {
   if (DB.mode === 'firebase') DB.anon().catch(dbErr);
-  sub('pub', 'quizzes', v => { S.pub = v ? Object.values(v).map(normQuiz) : []; if (S.view === 'home' && S.role === 'student') renderGrid(); });
+  subClasses();
+  sub('pub', 'quizzes', v => { S.pub = (v ? Object.values(v).map(normQuiz) : []).filter(q => q.pubClasses.includes('*') || q.pubClasses.includes(S.cls)); if (S.view === 'home' && S.role === 'student') renderGrid(); });
+  clearInterval(beatT); beatT = setInterval(() => beat().catch(() => {}), 30000);
 }
 A.teacherEnter = () => {
   if (DB.mode !== 'firebase') return A.teacherEnterLocal();
@@ -623,12 +654,17 @@ A.pwOk = () => {
 };
 function startTeacher() {
   S.lib.forEach(normQuiz); syncCats();
+  subClasses();
+  clearInterval(presT); presT = setInterval(() => { if (S.role !== 'teacher') return; if (S.view === 'results') renderResultsBody(); else if (S.view === 'home') updateStudentChip(); }, 15000);
   if (DB.mode === 'firebase') Promise.all(S.lib.filter(q => q.published).map(q => Promise.resolve(pushPub(q)).catch(() => 0))).then(r => { if (r.length) console.log('공개 퀴즈 ' + r.length + '개를 서버와 맞췄습니다'); });
   sub('students', 'students', v => { S.students = v || {}; if (S.view === 'results') renderResultsBody(); else if (S.view === 'home') updateStudentChip(); });
 }
-function updateStudentChip() { const e = $('#stuN'); if (e) e.textContent = Object.keys(S.students).length; }
+function updateStudentChip() { const e = $('#stuN'); if (e) e.textContent = Object.values(S.students).filter(isOn).length; }
 A.logout = () => {
-  if (S.role === 'teacher' && DB.mode === 'firebase') DB.signOut();
+  clearInterval(beatT); clearInterval(presT);
+  if (S.role === 'student') beat(true).catch(() => {});
+  const so = (S.role === 'teacher' && DB.mode === 'firebase') ? Promise.resolve(DB.signOut()) : Promise.resolve();
+  so.then(() => subClasses());
   unsub('pub'); unsub('students'); unsub('resp'); unsub('hints'); S.role = null; S.cur = null; sess.del('sq_role');
   if (board.on) { board.on = false; applyBoardClass(); } go('entry');
 };
@@ -670,7 +706,7 @@ function renderStats() {
   const e = $('#stats'); if (!e) return;
   const nq = S.lib.reduce((a, q) => a + q.questions.length, 0);
   e.innerHTML = `<div><b>${S.lib.length}</b><span>전체 퀴즈</span></div><div><b>${S.lib.filter(q => q.published).length}</b><span>공개 중</span></div>
-    <div><b>${nq}</b><span>전체 문항</span></div><div><b id="stuN">${Object.keys(S.students).length}</b><span>접속 학생</span></div>`;
+    <div><b>${nq}</b><span>전체 문항</span></div><div><b id="stuN">${Object.values(S.students).filter(isOn).length}</b><span>접속 중 학생</span></div>`;
 }
 function renderTabs() {
   const T = S.role === 'teacher', cl = catList(), src = T ? S.lib : S.pub;
@@ -698,10 +734,10 @@ function renderGrid() {
   g.innerHTML = list.map((q, i) => {
     const n = q.questions.length, meta = `문항 ${n}${q.passage ? ' · 지문 포함' : ''}`;
     if (T) {
-      return `<div class="card qc"><div style="display:flex;gap:6px;flex-wrap:wrap">${q.unit ? `<span class="tag ac">${esc(q.unit)}</span>` : ''}${q.published ? '<span class="tag ok">공개 중</span>' : '<span class="tag">비공개</span>'}</div>
+      return `<div class="card qc"><div style="display:flex;gap:6px;flex-wrap:wrap">${q.unit ? `<span class="tag ac">${esc(q.unit)}</span>` : ''}${pubTag(q)}</div>
         <h3>${esc(q.title || '(제목 없음)')}</h3><div class="mu" style="font-size:15px">${meta}</div>
         <div class="acts"><button class="btn sm pri" data-act="present" data-id="${q.id}">수업 시작</button><button class="btn sm" data-act="results" data-id="${q.id}">결과</button><button class="btn sm" data-act="edit" data-id="${q.id}">수정</button>
-        <button class="btn sm" data-act="pubToggle" data-id="${q.id}">${q.published ? '비공개로' : '공개하기'}</button><button class="btn sm" data-act="dup" data-id="${q.id}">복제</button>
+        <button class="btn sm" data-act="pubSet" data-id="${q.id}">${q.published ? '공개 설정' : '공개하기'}</button><button class="btn sm" data-act="dup" data-id="${q.id}">복제</button>
         ${S.sort === 'mine' && S.unit === '전체' && !S.q ? `<button class="btn sm" data-act="mv" data-id="${q.id}" data-d="-1">앞으로</button><button class="btn sm" data-act="mv" data-id="${q.id}" data-d="1">뒤로</button>` : ''}
         <button class="btn sm bad" data-act="del" data-id="${q.id}">삭제</button></div></div>`;
     }
@@ -749,7 +785,7 @@ A.sample = () => { S.lib.push(sampleQuiz()); saveLib(); renderGrid(); toast('예
 A.newQuiz = () => { S.ed = newQuiz(); S.edNew = true; go('editor'); };
 A.edit = d => { S.ed = clone(findLib(d.id)); S.edNew = false; go('editor'); };
 A.dup = d => {
-  const q = clone(findLib(d.id)); q.id = uid(); q.title += ' (사본)'; q.published = false; q.updated = Date.now();
+  const q = clone(findLib(d.id)); q.id = uid(); q.title += ' (사본)'; q.published = false; q.pubClasses = []; q.updated = Date.now();
   q.questions.forEach(x => x.id = uid());
   const i = S.lib.findIndex(x => x.id === d.id); S.lib.splice(i + 1, 0, q); saveLib(); renderGrid(); toast('복제했습니다');
 };
@@ -764,10 +800,63 @@ A.mv = d => {
   if (j < 0 || j >= S.lib.length) return; const t = S.lib[i]; S.lib[i] = S.lib[j]; S.lib[j] = t; saveLib(); renderGrid();
 };
 function pushPub(q) { if (q.published) { const cp = clone(q); cp.questions.forEach(x => { x.hint = ''; }); return DB.set('quizzes/' + q.id, cp); } return DB.remove('quizzes/' + q.id); }
-A.pubToggle = d => {
-  const q = findLib(d.id), on = !q.published; q.published = on; saveLib(); renderTabs(); renderGrid();
-  Promise.resolve(pushPub(q)).then(() => toast(on ? (DB.mode === 'firebase' ? '학생 홈에 공개했습니다' : '공개했습니다 (로컬 모드: 이 기기에서만 보입니다)') : '비공개로 전환했습니다'))
-    .catch(() => { q.published = !on; saveLib(); renderTabs(); renderGrid(); toast('서버에 저장하지 못해 이전 상태로 되돌렸습니다'); });
+function pubTag(q) {
+  if (!q.published) return '<span class="tag">비공개</span>';
+  const pc = q.pubClasses || [];
+  if (pc.includes('*')) return '<span class="tag ok">공개 중 · 모든 반</span>';
+  const names = pc.map(clsName).filter(Boolean);
+  return `<span class="tag ok">공개 중 · ${names.length ? esc(names.join(', ')) : '반 없음'}</span>`;
+}
+A.pubSet = d => {
+  const q = findLib(d.id), l = clsList();
+  if (!l.length) { openModal(`<div class="mdl"><h2>공개할 반이 없습니다</h2><p class="mu">먼저 반을 만들어야 퀴즈를 공개할 수 있습니다.</p><div class="mrow"><button class="btn" data-act="closeModal">닫기</button><button class="btn pri" data-act="classMgr">반 만들기</button></div></div>`); return; }
+  const pc = q.pubClasses || [], all = pc.includes('*');
+  openModal(`<div class="mdl"><h2>공개할 반 선택</h2><p class="mu" style="margin-top:0">체크한 반의 학생에게만 이 퀴즈가 보입니다. 모두 해제하면 비공개가 됩니다.</p>
+    <div>${l.map(c => `<label class="crow" style="cursor:pointer"><input type="checkbox" class="pcb" value="${c.id}" ${all || pc.includes(c.id) ? 'checked' : ''} style="width:22px;height:22px;flex:none"><span style="font-size:18px">${esc(c.name)}</span></label>`).join('')}</div>
+    <div class="mrow"><button class="btn" data-act="pubAll">모두 선택</button><span style="flex:1"></span><button class="btn" data-act="closeModal">취소</button><button class="btn pri" data-act="pubSave" data-id="${q.id}">저장</button></div></div>`);
+};
+A.pubAll = () => { document.querySelectorAll('.pcb').forEach(c => { c.checked = true; }); };
+A.pubSave = d => {
+  const q = findLib(d.id), ids = [...document.querySelectorAll('.pcb')].filter(c => c.checked).map(c => c.value);
+  const prev = { pc: q.pubClasses, pub: q.published }; closeModal();
+  q.pubClasses = ids; q.published = ids.length > 0; saveLib(); renderTabs(); renderGrid();
+  Promise.resolve(pushPub(q)).then(() => toast(!ids.length ? '비공개로 전환했습니다' : DB.mode === 'firebase' ? '선택한 반에 공개했습니다' : '공개했습니다 (로컬 모드: 이 기기에서만 보입니다)'))
+    .catch(() => { q.pubClasses = prev.pc; q.published = prev.pub; saveLib(); renderTabs(); renderGrid(); toast('서버에 저장하지 못해 이전 상태로 되돌렸습니다'); });
+};
+/* ====== 반 관리 ====== */
+A.classMgr = () => {
+  openModal(`<div class="mdl w"><h2>반 관리</h2><p class="mu" style="margin-top:0">학생은 입장할 때 반을 고르고 이름을 직접 입력합니다. 퀴즈는 [공개 설정]에서 반마다 공개하고, 결과는 반별로 봅니다.</p>
+    <div id="clsList"></div>
+    <div class="crow" style="margin-top:12px"><input id="clsNew" class="fld" maxlength="20" placeholder="새 반 이름 (예: 1학년 3반)"><button class="btn pri" data-act="clsAdd">추가</button></div>
+    <div class="mrow"><button class="btn pri" data-act="closeModal">닫기</button></div></div>`);
+  renderClsList();
+};
+function renderClsList() {
+  const e = $('#clsList'); if (!e) return; const l = clsList();
+  e.innerHTML = l.length ? l.map(c => `<div class="crow"><input id="cn_${c.id}" class="fld" maxlength="20" value="${esc(c.name)}"><button class="btn sm" data-act="clsRen" data-id="${c.id}">이름 변경</button><button class="btn sm bad" data-act="clsDel" data-id="${c.id}">삭제</button></div>`).join('') : '<div class="empty">아직 반이 없습니다. 아래에서 추가해 주세요.</div>';
+}
+A.clsAdd = () => {
+  const el = $('#clsNew'), n = (el.value || '').trim();
+  if (!n) return toast('반 이름을 입력해 주세요');
+  if (clsList().some(c => c.name === n)) return toast('같은 이름의 반이 있습니다');
+  const id = 'c' + uid(), o = Math.max(0, ...clsList().map(c => c.o)) + 1; el.value = '';
+  S.classes[id] = { name: n, o }; onClassesChange();
+  Promise.resolve(DB.set('classes/' + id, { name: n, o })).catch(() => { delete S.classes[id]; onClassesChange(); toast('반을 저장하지 못했습니다. 선생님 계정과 규칙을 확인하세요'); });
+};
+A.clsRen = d => {
+  const n = ($('#cn_' + d.id).value || '').trim(); if (!n) return toast('반 이름을 입력해 주세요');
+  if (clsList().some(c => c.name === n && c.id !== d.id)) return toast('같은 이름의 반이 있습니다');
+  const o = (S.classes[d.id] || {}).o || 0, old = S.classes[d.id];
+  S.classes[d.id] = { name: n, o }; onClassesChange();
+  Promise.resolve(DB.set('classes/' + d.id, { name: n, o })).then(() => toast('이름을 바꿨습니다')).catch(() => { S.classes[d.id] = old; onClassesChange(); toast('저장하지 못했습니다'); });
+};
+A.clsDel = d => {
+  const ks = Object.entries(S.students).filter(([k, st]) => clsOf(k, st) === d.id).map(([k]) => k);
+  askConfirm(`'${clsName(d.id)}' 반을 삭제할까요? 이 반 학생 ${ks.length}명이 명단에서 지워지고 퀴즈 공개 대상에서도 빠집니다. 학생들이 푼 결과 기록은 남습니다.`, () => {
+    DB.remove('classes/' + d.id); ks.forEach(k => { DB.remove('students/' + k); delete S.students[k]; });
+    S.lib.forEach(q => { if ((q.pubClasses || []).includes(d.id)) { q.pubClasses = q.pubClasses.filter(x => x !== d.id); q.published = q.pubClasses.length > 0; pushPub(q); } });
+    saveLib(); delete S.classes[d.id]; onClassesChange(); renderTabs(); toast('반을 삭제했습니다');
+  }, '삭제', true);
 };
 A.exportAll = () => {
   if (!S.lib.length) return toast('내보낼 퀴즈가 없습니다. 먼저 퀴즈를 만들어 주세요');
@@ -782,7 +871,7 @@ A.exportAll = () => {
 A.expAll = d => document.querySelectorAll('.expck').forEach(c => c.checked = d.v === '1');
 A.exportDo = () => {
   const ids = [...document.querySelectorAll('.expck:checked')].map(c => c.value); if (!ids.length) return toast('내보낼 퀴즈를 하나 이상 선택해 주세요');
-  const list = S.lib.filter(q => ids.includes(q.id)).map(q => { const c = clone(q); delete c.published; return c; });
+  const list = S.lib.filter(q => ids.includes(q.id)).map(q => { const c = clone(q); delete c.published; delete c.pubClasses; return c; });
   const d = new Date(), stamp = d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0');
   download('수업퀴즈_' + stamp + '_' + list.length + '개.json', JSON.stringify({ app: 'class-quiz', exported: d.toISOString(), quizzes: list }, null, 1), 'application/json');
   closeModal(); toast(list.length + '개 퀴즈를 저장했습니다');
@@ -817,7 +906,7 @@ document.addEventListener('drop', e => { if (e.target.closest && e.target.closes
 function importData(text) {
   try {
     const d = JSON.parse(text); const arr = Array.isArray(d) ? d : (d.quizzes || [d]); let n = 0;
-    arr.forEach(q => { if (!q || !q.questions) return; q = normQuiz(q); q.unit = q.unit || ''; q.id = uid(); q.published = false; q.updated = Date.now(); q.questions.forEach(x => x.id = x.id || uid()); if (q.unit) addCat(q.unit); S.lib.push(q); n++; });
+    arr.forEach(q => { if (!q || !q.questions) return; q = normQuiz(q); q.unit = q.unit || ''; q.id = uid(); q.published = false; q.pubClasses = []; q.updated = Date.now(); q.questions.forEach(x => x.id = x.id || uid()); if (q.unit) addCat(q.unit); S.lib.push(q); n++; });
     saveLib(); if (S.view === 'home') { renderTabs(); renderGrid(); } toast(n + '개 퀴즈를 불러왔습니다 (비공개)');
   } catch (e) { toast('JSON 형식을 읽을 수 없습니다'); }
 }
@@ -937,8 +1026,18 @@ function openQuiz(quiz, teacher) {
 }
 A.open = d => { const q = S.pub.find(x => x.id === d.id); if (q) openQuiz(q, false); };
 A.present = d => { S.resp = {}; openQuiz(findLib(d.id), true); };
+function respEntries() {
+  const fc = S.view === 'results' && S.rv ? (S.rv.cls || '') : '';
+  return Object.entries(S.resp || {}).filter(([k, r]) => !fc || clsOf(k, r) === fc);
+}
+function rvTabs() {
+  const quiz = rvQuiz(), l = clsList(); if (!l.length) return '';
+  const pc = quiz.pubClasses || [], fc = S.rv.cls || '';
+  return '<div class="rtabs">' + [{ id: '', name: '전체' }, ...l].map(c => `<button class="btn ${fc === c.id ? 'on' : ''}" data-act="rvCls" data-id="${c.id}">${esc(c.name)}${c.id && !(pc.includes('*') || pc.includes(c.id)) ? ' <small style="opacity:.65">(비공개)</small>' : ''}</button>`).join('') + '</div>';
+}
+A.rvCls = d => { S.rv.cls = d.id; renderResultsBody(); };
 function distFor(q) {
-  const rs = Object.values(S.resp || {}), counts = {}; let n = 0;
+  const rs = respEntries().map(e => e[1]), counts = {}; let n = 0;
   rs.forEach(r => { const v = r.answers && r.answers[q.id]; if (v !== undefined && v !== null && v !== '') { counts[v] = (counts[v] || 0) + 1; n++; } });
   const ok = rs.filter(r => r.answers && isRight(q, r.answers[q.id])).length;
   return { counts, n, ok, pct: n ? Math.round(ok / n * 100) : null, rs };
@@ -1065,7 +1164,7 @@ function saveMine(done) {
   const c = S.cur, quiz = c.all || c.quiz, mp = c.base ? Object.assign({}, c.base, c.picks) : c.picks, g = grade(quiz, { answers: mp });
   const rec = { picks: mp, status: done || c.base ? 'done' : 'doing', ok: g.ok, total: g.total, ts: Date.now() };
   const all = store.get('sq_my_' + S.key, {}); all[quiz.id] = rec; store.set('sq_my_' + S.key, all);
-  DB.set('responses/' + quiz.id + '/' + S.key, { name: S.name, answers: mp, status: rec.status, ok: g.ok, total: g.total, ts: rec.ts });
+  DB.set('responses/' + quiz.id + '/' + S.key, { name: S.name, cls: S.cls, answers: mp, status: rec.status, ok: g.ok, total: g.total, ts: rec.ts });
 }
 const answered = (c, q) => { const v = c.picks[q.id]; if (v === undefined || v === null || v === '') return false; return q.type === 'short' ? !!c.sconf[q.id] && String(v).trim() !== '' : true; };
 let doneT;
@@ -1129,7 +1228,7 @@ function renderStudentResult() {
 }
 A.leave = () => { unsub('hints'); S.cur = null; go('home'); };
 /* ====== 결과 모니터링 (선생님) ====== */
-A.results = d => { S.rv = { quizId: d.id, qi: 0 }; sub('resp', 'responses/' + d.id, v => { S.resp = v || {}; if (S.view === 'results') renderResultsBody(); }); S.resp = {}; go('results'); };
+A.results = d => { const q0 = findLib(d.id), fp = ((q0 && q0.pubClasses) || []).find(x => x !== '*' && S.classes[x]) || ''; S.rv = { quizId: d.id, qi: 0, cls: fp }; sub('resp', 'responses/' + d.id, v => { S.resp = v || {}; if (S.view === 'results') renderResultsBody(); }); S.resp = {}; go('results'); };
 function rvQuiz() { return S.rv && findLib(S.rv.quizId); }
 function renderResults() {
   const quiz = rvQuiz(); if (!quiz) return go('home');
@@ -1141,10 +1240,10 @@ function renderResults() {
 }
 function renderResultsBody() {
   const quiz = rvQuiz(), box = $('#rbody'); if (!quiz || !box) return;
-  const rs = Object.entries(S.resp || {}).map(([k, r]) => ({ k, r, g: grade(quiz, r) }));
+  const rs = respEntries().map(([k, r]) => ({ k, r, g: grade(quiz, r) }));
   const done = rs.filter(x => x.r.status === 'done'), qi = Math.min(S.rv.qi, quiz.questions.length - 1), q = quiz.questions[qi], d = distFor(q);
   const avg = done.length ? (done.reduce((s, x) => s + x.g.ok / x.g.total, 0) / done.length * 100) : null;
-  const notStarted = Object.entries(S.students).filter(([k]) => !S.resp[k]).map(([k, s]) => ({ k, name: s.name }));
+  const fc = S.rv.cls || '', notStarted = Object.entries(S.students).filter(([k, s]) => !S.resp[k] && (!fc || clsOf(k, s) === fc)).map(([k, s]) => ({ k, name: s.name, on: isOn(s), cn: clsName(clsOf(k, s)) })), stale = notStarted.filter(x => !x.on);
   const items = q.type === 'ox' ? [{ t: 'O', i: 0 }, { t: 'X', i: 1 }] : q.type === 'mc' ? visChoices(q) : [];
   let distHtml = '';
   if (q.type === 'short') {
@@ -1153,6 +1252,7 @@ function renderResultsBody() {
   } else distHtml = `<div class="dist">${items.map(({ t, i }) => { const n = d.counts[i] || 0, p = d.n ? Math.round(n / d.n * 100) : 0; return `<div class="drow ${i === Number(q.answer) ? 'ans' : ''}"><b>${q.type === 'ox' ? t : i + 1}</b><div class="dbar"><i style="width:${p}%"></i></div><span>${n}명 · ${p}%${i === Number(q.answer) ? ' 정답' : ''}</span></div>`; }).join('')}</div>`;
   const low = d.pct !== null && d.pct < 50;
   box.innerHTML = `
+  ${rvTabs()}
   <div class="stats"><div class="card stat"><b>${rs.length}</b><span>응시 학생</span></div><div class="card stat"><b>${done.length}</b><span>제출 완료</span></div>
     <div class="card stat"><b>${avg === null ? '-' : Math.round(avg)}<small style="font-size:18px">점</small></b><span>제출자 평균</span></div><div class="card stat"><b>${notStarted.length}</b><span>접속했지만 미응시</span></div></div>
   <div style="display:grid;grid-template-columns:minmax(0,6fr) minmax(0,5fr);gap:16px" class="rgrid">
@@ -1160,13 +1260,13 @@ function renderResultsBody() {
       ${quiz.questions.map((x, i) => { const dd = distFor(x), lw = dd.pct !== null && dd.pct < 50; return `<div class="qrow ${i === qi ? 'cur' : ''}" data-act="rvQ" data-i="${i}"><b>${i + 1}번</b><span class="t">${esc(x.text.split('\n')[0])}</span><div class="meter ${lw ? 'low' : ''}"><i style="width:${dd.pct || 0}%"></i></div><span class="pct ${lw ? 'low' : ''}">${dd.pct === null ? '-' : dd.pct + '%'}</span></div>`; }).join('')}</div>
     <div class="card" style="padding:16px 20px"><div style="font-weight:700;margin-bottom:4px">${qi + 1}번 선택지 분포 ${low ? '<span class="tag no" style="margin-left:6px">정답률 ' + d.pct + '% · 다시 설명 필요</span>' : ''}</div>
       <div class="mu" style="font-size:15px;margin-bottom:10px">${esc(q.text.split('\n')[0])}</div>${distHtml}<div class="mu" style="font-size:14px;margin-top:6px">응답 ${d.n}명 · 정답 ${answerText(q)}</div></div></div>
-  <h2 style="margin-top:28px">학생별 현황</h2>
+  <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:28px"><h2 style="margin:0">학생별 현황</h2><span class="mu" style="font-size:14px"><i class="pres on"></i>접속 중 <i class="pres" style="margin-left:6px"></i>자리 비움</span><span style="flex:1"></span>${stale.length ? `<button class="btn sm bad" data-act="stuClean">응답 없고 자리 비운 학생 ${stale.length}명 삭제</button>` : ''}</div>
   <div class="sg">${rs.sort((a, b) => a.r.name.localeCompare(b.r.name, 'ko')).map(({ k, r, g }) => {
     const isDone = r.status === 'done', pctv = g.total ? g.ok / g.total : 0;
     const cls = isDone ? (pctv < .5 ? 'low' : 'done') : 'doing';
-    return `<button class="card sc ${cls}" data-act="stuDetail" data-k="${esc(k)}"><b>${esc(r.name)}</b><span class="mu" style="font-size:15px">${isDone ? `제출 · ${g.ok}/${g.total}` : `풀이 중 · ${g.ans}/${g.total}`}</span>
+    return `<button class="card sc ${cls}" data-act="stuDetail" data-k="${esc(k)}"><b><i class="pres ${isOn(S.students[k]) ? 'on' : ''}"></i>${esc(r.name)}</b>${fc ? '' : `<span class="mu" style="font-size:13px">${esc(clsName(clsOf(k, r)))}</span>`}<span class="mu" style="font-size:15px">${isDone ? `제출 · ${g.ok}/${g.total}` : `풀이 중 · ${g.ans}/${g.total}`}</span>
       <div class="dots">${quiz.questions.map(x => `<i class="${g.per[x.id] === true ? (isDone ? 'o' : 'p') : g.per[x.id] === false ? (isDone ? 'x' : 'p') : ''}"></i>`).join('')}</div></button>`;
-  }).join('')}${notStarted.map(s => `<div class="card sc" style="cursor:default;opacity:.7"><b>${esc(s.name)}</b><span class="mu" style="font-size:15px">미응시</span></div>`).join('')}</div>
+  }).join('')}${notStarted.map(s => `<div class="card sc" style="cursor:default"><b style="opacity:.75"><i class="pres ${s.on ? 'on' : ''}"></i>${esc(s.name)}</b>${fc ? '' : `<span class="mu" style="font-size:13px">${esc(s.cn)}</span>`}<span class="mu" style="font-size:15px">미응시 · ${s.on ? '접속 중' : '자리 비움'}</span><button class="btn sm bad sdel" data-act="stuDel" data-k="${esc(s.k)}">삭제</button></div>`).join('')}</div>
   ${!rs.length && !notStarted.length ? '<div class="empty" style="margin-top:12px">아직 접속한 학생이 없습니다. 퀴즈를 공개하고 QR 코드를 보여 주세요.</div>' : ''}`;
 }
 A.rvQ = d => { S.rv.qi = +d.i; renderResultsBody(); };
@@ -1176,13 +1276,35 @@ A.stuDetail = d => {
     <div style="font-size:26px;font-weight:800;margin-bottom:10px">누적 점수 ${g.ok} / ${g.total}</div>
     ${quiz.questions.map((q, i) => { const v = r.answers && r.answers[q.id], ok = g.per[q.id]; const my = v === undefined ? '-' : q.type === 'mc' ? (Number(v) + 1) + '번' : q.type === 'ox' ? (Number(v) === 0 ? 'O' : 'X') : v;
       return `<div style="display:flex;gap:12px;align-items:center;padding:9px 0;border-bottom:1px solid var(--ln)"><b style="width:44px">${i + 1}번</b><span class="tag ${ok === true ? 'ok' : ok === false ? 'no' : ''}" style="width:52px;text-align:center">${ok === true ? '정답' : ok === false ? '오답' : '미응답'}</span><span style="flex:1;font-size:16px" class="mu">선택 ${esc(my)} · 정답 ${esc(answerText(q).split('  ')[0])}</span></div>`; }).join('')}
-    <div class="mrow"><button class="btn pri" data-act="closeModal">닫기</button></div></div>`);
+    <div class="mrow"><button class="btn bad" data-act="stuDel" data-k="${esc(d.k)}">학생 삭제</button><span style="flex:1"></span><button class="btn pri" data-act="closeModal">닫기</button></div></div>`);
 };
-A.resetResp = () => { const q = rvQuiz(); askConfirm('이 퀴즈의 모든 학생 응답을 지울까요? 되돌릴 수 없습니다.', () => { DB.remove('responses/' + q.id); S.resp = {}; renderResultsBody(); toast('응답을 초기화했습니다'); }, '초기화', true); };
+A.stuDel = d => {
+  const st = S.students[d.k], r = S.resp[d.k], name = (st && st.name) || (r && r.name) || '', q = rvQuiz();
+  askConfirm(`'${name}' 학생을 삭제할까요?${r ? ' 이 퀴즈의 풀이 기록도 함께 지워집니다.' : ''}${isOn(st) ? ' 지금 접속 중인 학생은 잠시 뒤 다시 나타납니다.' : ''} 삭제한 이름은 다시 쓸 수 있습니다.`, () => {
+    closeModal();
+    Promise.all([DB.remove('students/' + d.k), r ? DB.remove('responses/' + q.id + '/' + d.k) : null]).then(() => toast('삭제했습니다')).catch(() => toast('삭제하지 못했습니다'));
+    delete S.students[d.k]; delete S.resp[d.k]; renderResultsBody();
+  }, '삭제', true);
+};
+A.stuClean = () => {
+  const fc = S.rv.cls || '', list = Object.entries(S.students).filter(([k, st]) => !S.resp[k] && !isOn(st) && (!fc || clsOf(k, st) === fc));
+  if (!list.length) return toast('삭제할 학생이 없습니다');
+  askConfirm(`이 퀴즈에 응답이 없고 지금 접속 중이 아닌 학생 ${list.length}명을 명단에서 삭제할까요? 다른 퀴즈의 풀이 기록은 지워지지 않습니다.`, () => {
+    Promise.all(list.map(([k]) => DB.remove('students/' + k))).then(() => toast(list.length + '명을 삭제했습니다')).catch(() => toast('일부를 삭제하지 못했습니다'));
+    list.forEach(([k]) => { delete S.students[k]; }); renderResultsBody();
+  }, '삭제', true);
+};
+A.resetResp = () => {
+  const q = rvQuiz(), fc = S.rv.cls || '', keys = respEntries().map(e => e[0]);
+  askConfirm(fc ? `'${clsName(fc)}' 반의 이 퀴즈 응답 ${keys.length}건을 지울까요? 되돌릴 수 없습니다.` : '이 퀴즈의 모든 반 학생 응답을 지울까요? 되돌릴 수 없습니다.', () => {
+    if (!fc) { DB.remove('responses/' + q.id); S.resp = {}; } else keys.forEach(k => { DB.remove('responses/' + q.id + '/' + k); delete S.resp[k]; });
+    renderResultsBody(); toast('응답을 초기화했습니다');
+  }, '초기화', true);
+};
 A.csv = () => {
-  const quiz = rvQuiz(), rows = [['이름', '상태', '정답 수', '문항 수', ...quiz.questions.map((q, i) => (i + 1) + '번')]];
-  Object.values(S.resp || {}).sort((a, b) => a.name.localeCompare(b.name, 'ko')).forEach(r => { const g = grade(quiz, r); rows.push([r.name, r.status === 'done' ? '제출' : '풀이 중', g.ok, g.total, ...quiz.questions.map(q => g.per[q.id] === true ? 'O' : g.per[q.id] === false ? 'X' : '')]); });
-  download(quiz.title + '_결과.csv', '\ufeff' + rows.map(r => r.map(c => '"' + String(c).replace(/"/g, '""') + '"').join(',')).join('\n'), 'text/csv');
+  const quiz = rvQuiz(), rows = [['반', '이름', '상태', '정답 수', '문항 수', ...quiz.questions.map((q, i) => (i + 1) + '번')]];
+  respEntries().map(e => e).sort((a, b) => clsName(clsOf(a[0], a[1])).localeCompare(clsName(clsOf(b[0], b[1])), 'ko') || a[1].name.localeCompare(b[1].name, 'ko')).forEach(([k, r]) => { const g = grade(quiz, r); rows.push([clsName(clsOf(k, r)), r.name, r.status === 'done' ? '제출' : '풀이 중', g.ok, g.total, ...quiz.questions.map(q => g.per[q.id] === true ? 'O' : g.per[q.id] === false ? 'X' : '')]); });
+  download(quiz.title + (S.rv.cls ? '_' + clsName(S.rv.cls) : '') + '_결과.csv', '\ufeff' + rows.map(r => r.map(c => '"' + String(c).replace(/"/g, '""') + '"').join(',')).join('\n'), 'text/csv');
 };
 
 /* ====== 설정 / QR ====== */
@@ -1880,6 +2002,7 @@ document.addEventListener('keydown', e => {
   const tag = (e.target.tagName || '').toLowerCase();
   if (e.key === 'Enter' && e.target.id === 'nameIn') { A.studentEnter(); return; }
   if (e.key === 'Enter' && e.target.id === 'pwIn') { A.pwOk(); return; }
+  if (e.key === 'Enter' && e.target.id === 'clsNew') { A.clsAdd(); return; }
   if (e.key === 'Enter' && (e.target.id === 'tId' || e.target.id === 'tPw')) { A.idLogin(); return; }
   if (e.key === 'Enter' && e.target.id === 'shortIn') { e.preventDefault(); A.shortOk(); return; }
   if (e.key === 'Escape') { const cf = $('#cfm'); if (cf && cf.classList.contains('open')) { cf.className = ''; cf.innerHTML = ''; return; } if ($('#modal').classList.contains('open')) closeModal(); return; }
@@ -1902,7 +2025,7 @@ document.addEventListener('keydown', e => {
 /* ====== 시작 ====== */
 (function boot() {
   setTheme(store.get('sq_theme', 'light'));
-  initDB();
+  initDB(); subClasses();
   const role = sess.get('sq_role'), nm = store.get('sq_name', '');
   if (role === 'teacher' && DB.mode === 'firebase') {
     DB.authInit.then(u => {
@@ -1911,7 +2034,7 @@ document.addEventListener('keydown', e => {
     });
   }
   else if (role === 'teacher') { S.role = 'teacher'; S.name = '선생님'; startTeacher(); S.view = 'home'; }
-  else if (role === 'student' && nm) { S.role = 'student'; S.name = nm; S.key = keyOf(nm) || ('s' + uid()); startStudent(); S.view = 'home'; }
+  else if (role === 'student' && nm && S.cls) { S.role = 'student'; S.name = nm; S.key = S.cls + '__' + (keyOf(nm) || ('s' + uid())); S.ts0 = Date.now(); startStudent(); S.view = 'home'; beat().catch(() => {}); }
   render();
 })();
 </script>

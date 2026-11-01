@@ -30,6 +30,10 @@
             ".write": "auth != null && root.child('smartquiz/teachers').child(auth.uid).val() == true || (auth != null && ((!data.exists() && newData.child('uid').val() == auth.uid) || (data.child('uid').val() == auth.uid && newData.child('uid').val() == auth.uid)))"
           }
         }
+      },
+      "classes": {
+        ".read": "auth != null",
+        ".write": "auth != null && root.child('smartquiz/teachers').child(auth.uid).val() == true"
       }
     }
   }

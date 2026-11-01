@@ -322,7 +322,15 @@ body.pp-axis #main{background-color:var(--pp);background-image:linear-gradient(v
  Firebase를 쓰려면 아래에 본인 프로젝트 값을 넣으세요 (databaseURL 필수).
  비워 두면 '로컬 모드'로 동작하며 같은 브라우저 안에서만 동기화됩니다.
  선생님 설정 화면에서 붙여넣어도 되며, 이 경우 QR 주소에 설정이 함께 담겨 학생 기기에도 전달됩니다. */
-const FIREBASE_CONFIG = null;
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyCW3JHyH7dg2U0FRSyqfoB4RWlC-Lnfm94",
+  authDomain: "dsquiz-10d5f.firebaseapp.com",
+  databaseURL: "https://dsquiz-10d5f-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "dsquiz-10d5f",
+  storageBucket: "dsquiz-10d5f.firebasestorage.app",
+  messagingSenderId: "268378135107",
+  appId: "1:268378135107:web:6211371ae3e157a8d992f6"
+};
 /* 예: {apiKey:"...", authDomain:"...", databaseURL:"https://xxxx-default-rtdb.firebaseio.com", projectId:"..."} */
 
 const CIRC = '①②③④⑤';

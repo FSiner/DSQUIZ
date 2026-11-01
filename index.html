@@ -3,10 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>DSQUIZ</title>
+<title>수업 퀴즈</title>
 <meta name="description" content="지문을 읽고 풀고 바로 확인하는 실시간 수업 퀴즈">
 <meta name="theme-color" content="#0b2a6f">
-<meta property="og:title" content="DSQUIZ"><meta property="og:description" content="지문을 읽고 풀고 바로 확인하는 실시간 수업 퀴즈">
+<meta property="og:title" content="수업 퀴즈"><meta property="og:description" content="지문을 읽고 풀고 바로 확인하는 실시간 수업 퀴즈">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%230b2a6f'/%3E%3Cpath d='M32 14a14 14 0 1 0 8.4 25.2l6.6 6.6 4-4-6.6-6.6A14 14 0 0 0 32 14zm0 6a8 8 0 1 1 0 16 8 8 0 0 1 0-16z' fill='%23fff'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;600&display=swap">
@@ -322,15 +322,7 @@ body.pp-axis #main{background-color:var(--pp);background-image:linear-gradient(v
  Firebase를 쓰려면 아래에 본인 프로젝트 값을 넣으세요 (databaseURL 필수).
  비워 두면 '로컬 모드'로 동작하며 같은 브라우저 안에서만 동기화됩니다.
  선생님 설정 화면에서 붙여넣어도 되며, 이 경우 QR 주소에 설정이 함께 담겨 학생 기기에도 전달됩니다. */
-const FIREBASE_CONFIG = {
-  apiKey: "AIzaSyCW3JHyH7dg2U0FRSyqfoB4RWlC-Lnfm94",
-  authDomain: "dsquiz-10d5f.firebaseapp.com",
-  databaseURL: "https://dsquiz-10d5f-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "dsquiz-10d5f",
-  storageBucket: "dsquiz-10d5f.firebasestorage.app",
-  messagingSenderId: "268378135107",
-  appId: "1:268378135107:web:6211371ae3e157a8d992f6"
-};;
+const FIREBASE_CONFIG = null;
 /* 예: {apiKey:"...", authDomain:"...", databaseURL:"https://xxxx-default-rtdb.firebaseio.com", projectId:"..."} */
 
 const CIRC = '①②③④⑤';

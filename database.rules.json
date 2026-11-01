@@ -1,0 +1,10 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "quizzes":   { ".read": true, ".write": true },
+    "hints":     { ".read": true, ".write": true },
+    "students":  { ".read": true, ".write": true },
+    "responses": { ".read": true, ".write": true }
+  }
+}

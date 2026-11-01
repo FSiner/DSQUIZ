@@ -333,7 +333,7 @@ let _errAt = 0;
 function dbErr(e) {
   console.warn('DB 오류', e); if (Date.now() - _errAt < 4000) return; _errAt = Date.now();
   const c = String((e && e.code) || '') + ' ' + String((e && e.message) || '');
-  toast(/operation-not-allowed/.test(c) ? '익명 로그인이 꺼져 있습니다. Firebase 콘솔에서 켜 주세요' : /permission/i.test(c) ? '저장·읽기가 거부되었습니다. 같은 이름을 쓰는 다른 학생이 있거나 보안 규칙을 확인해야 합니다' : '연결 오류가 발생했습니다');
+  toast(/operation-not-allowed/.test(c) ? '익명 로그인이 꺼져 있습니다. Firebase 콘솔에서 켜 주세요' : /permission/i.test(c) ? (S.role === 'teacher' ? '권한이 없습니다. 선생님 계정이 teachers 명단에 있는지, 규칙을 게시했는지 확인하세요' : '권한이 없습니다. 같은 이름을 쓰는 다른 학생이 있거나 보안 규칙을 확인해야 합니다') : '연결 오류가 발생했습니다');
 }
 /* 예: {apiKey:"...", authDomain:"...", databaseURL:"https://xxxx-default-rtdb.firebaseio.com", projectId:"..."} */
 
@@ -382,7 +382,7 @@ function initDB() {
         login(id, pw) { return auth.signInWithEmailAndPassword(toEmail(id), pw).then(r => r.user); },
         isTeacher() {
           const u = auth.currentUser; if (!u || u.isAnonymous) return Promise.resolve(false);
-          return root.child('teachers/' + u.uid).once('value').then(x => x.val() === true, () => false);
+          return root.child('teachers/' + u.uid).once('value').then(x => x.val() === true);
         },
         signOut() { return auth.signOut(); },
         on(p, cb) {
@@ -504,7 +504,15 @@ function go(view) {
   render();
   window.scrollTo(0, 0);
 }
+function updateConn() {
+  let c = document.getElementById('conn');
+  if (!c) { c = document.createElement('div'); c.id = 'conn'; c.style.cssText = 'position:fixed;left:10px;bottom:8px;z-index:40;font-size:12px;padding:3px 9px;border-radius:99px;pointer-events:none;font-weight:600'; document.body.appendChild(c); }
+  const fb = DB.mode === 'firebase';
+  c.textContent = fb ? '● 연결됨' : '로컬 모드 · 다른 기기와 공유되지 않음';
+  c.style.background = fb ? '#e6f4ea' : '#fff4e0'; c.style.color = fb ? '#1e7a3c' : '#9a5b00'; c.style.border = '1px solid ' + (fb ? '#b7dfc3' : '#f0d49a');
+}
 function render() {
+  updateConn();
   renderHeader();
   const v = S.view;
   if (v === 'entry') renderEntry();
@@ -571,6 +579,7 @@ A.teacherEnter = () => {
   openModal(`<div class="mdl"><h2>선생님 로그인</h2>
   <input id="tId" class="fld" placeholder="아이디" autocomplete="username" autocapitalize="off" spellcheck="false">
   <input id="tPw" type="password" class="fld" placeholder="비밀번호" autocomplete="current-password" style="margin-top:8px">
+  <div id="tMsg" class="mu" style="font-size:14px;margin-top:10px;word-break:break-all;user-select:text"></div>
   <div class="mrow"><button class="btn" data-act="closeModal">취소</button><button class="btn pri" data-act="idLogin">로그인</button></div></div>`);
   setTimeout(() => { const e = $('#tId'); if (e) e.focus(); }, 50);
 };
@@ -580,12 +589,18 @@ A.idLogin = () => {
   if (!/^[a-z0-9._-]{2,30}$/i.test(id)) return toast('아이디는 영문·숫자·. _ - 만 쓸 수 있습니다');
   const b = $('[data-act=idLogin]'); if (b) b.disabled = true;
   DB.login(id, pw).then(() => DB.isTeacher()).then(ok => {
-    if (!ok) { toast('선생님으로 등록되지 않은 계정입니다'); return DB.signOut(); }
+    if (!ok) {
+      const uid = DB.uid(), m = $('#tMsg');
+      if (m) m.innerHTML = '로그인은 되었지만 <b>선생님 명단(teachers)</b>에 이 계정이 없습니다.<br>Firebase 데이터의 <b>smartquiz → teachers</b> 아래에 이 UID를 키로, 값을 <b>true</b>로 등록하세요.<br>UID: <b>' + esc(uid) + '</b>';
+      const bb = $('[data-act=idLogin]'); if (bb) bb.disabled = false;
+      return DB.signOut();
+    }
     closeModal(); S.role = 'teacher'; S.name = '선생님'; sess.set('sq_role', 'teacher'); startTeacher(); go('home');
   }).catch(e => {
     const bb = $('[data-act=idLogin]'); if (bb) bb.disabled = false;
     const c = (e && e.code) || '';
-    toast(/invalid-credential|wrong-password|user-not-found|invalid-email/.test(c) ? '아이디 또는 비밀번호가 맞지 않습니다'
+    toast(/permission/i.test(c + ' ' + ((e && e.message) || '')) ? '명단을 읽을 수 없습니다. 보안 규칙을 게시했는지, DB 주소가 맞는지 확인하세요'
+      : /invalid-credential|wrong-password|user-not-found|invalid-email/.test(c) ? '아이디 또는 비밀번호가 맞지 않습니다'
       : c === 'auth/too-many-requests' ? '시도가 너무 많습니다. 잠시 뒤 다시 해 주세요'
       : c === 'auth/operation-not-allowed' ? 'Firebase에서 이메일/비밀번호 로그인이 꺼져 있습니다'
       : c === 'auth/network-request-failed' ? '네트워크에 연결할 수 없습니다' : '로그인에 실패했습니다');
@@ -739,8 +754,12 @@ A.mv = d => {
   const i = S.lib.findIndex(x => x.id === d.id), j = i + Number(d.d);
   if (j < 0 || j >= S.lib.length) return; const t = S.lib[i]; S.lib[i] = S.lib[j]; S.lib[j] = t; saveLib(); renderGrid();
 };
-function pushPub(q) { if (q.published) { const cp = clone(q); cp.questions.forEach(x => { x.hint = ''; }); DB.set('quizzes/' + q.id, cp); } else DB.remove('quizzes/' + q.id); }
-A.pubToggle = d => { const q = findLib(d.id); q.published = !q.published; saveLib(); pushPub(q); renderTabs(); renderGrid(); toast(q.published ? '학생 홈에 공개했습니다' : '비공개로 전환했습니다'); };
+function pushPub(q) { if (q.published) { const cp = clone(q); cp.questions.forEach(x => { x.hint = ''; }); return DB.set('quizzes/' + q.id, cp); } return DB.remove('quizzes/' + q.id); }
+A.pubToggle = d => {
+  const q = findLib(d.id), on = !q.published; q.published = on; saveLib(); renderTabs(); renderGrid();
+  Promise.resolve(pushPub(q)).then(() => toast(on ? (DB.mode === 'firebase' ? '학생 홈에 공개했습니다' : '공개했습니다 (로컬 모드: 이 기기에서만 보입니다)') : '비공개로 전환했습니다'))
+    .catch(() => { q.published = !on; saveLib(); renderTabs(); renderGrid(); toast('서버에 저장하지 못해 이전 상태로 되돌렸습니다'); });
+};
 A.exportAll = () => {
   if (!S.lib.length) return toast('내보낼 퀴즈가 없습니다. 먼저 퀴즈를 만들어 주세요');
   openModal(`<div class="mdl"><h2>내보내기 — 퀴즈를 파일로 저장</h2>
@@ -1879,7 +1898,7 @@ document.addEventListener('keydown', e => {
   if (role === 'teacher' && DB.mode === 'firebase') {
     DB.authInit.then(u => {
       const fin = ok => { if (ok) { S.role = 'teacher'; S.name = '선생님'; startTeacher(); S.view = 'home'; } else sess.del('sq_role'); render(); };
-      if (u && !u.isAnonymous) DB.isTeacher().then(fin); else fin(false);
+      if (u && !u.isAnonymous) DB.isTeacher().then(fin, () => fin(false)); else fin(false);
     });
   }
   else if (role === 'teacher') { S.role = 'teacher'; S.name = '선생님'; startTeacher(); S.view = 'home'; }

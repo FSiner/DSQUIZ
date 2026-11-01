@@ -1,0 +1,36 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "smartquiz": {
+      "teachers": {
+        "$uid": {
+          ".read": "auth != null && auth.uid == $uid",
+          ".write": false
+        }
+      },
+      "quizzes": {
+        ".read": "auth != null",
+        ".write": "auth != null && root.child('smartquiz/teachers').child(auth.uid).val() == true"
+      },
+      "hints": {
+        ".read": "auth != null",
+        ".write": "auth != null && root.child('smartquiz/teachers').child(auth.uid).val() == true"
+      },
+      "students": {
+        ".read": "auth != null && root.child('smartquiz/teachers').child(auth.uid).val() == true",
+        "$key": {
+          ".write": "auth != null && root.child('smartquiz/teachers').child(auth.uid).val() == true || (auth != null && ((!data.exists() && newData.child('uid').val() == auth.uid) || (data.child('uid').val() == auth.uid && newData.child('uid').val() == auth.uid)))"
+        }
+      },
+      "responses": {
+        ".read": "auth != null && root.child('smartquiz/teachers').child(auth.uid).val() == true",
+        "$quiz": {
+          "$key": {
+            ".write": "auth != null && root.child('smartquiz/teachers').child(auth.uid).val() == true || (auth != null && ((!data.exists() && newData.child('uid').val() == auth.uid) || (data.child('uid').val() == auth.uid && newData.child('uid').val() == auth.uid)))"
+          }
+        }
+      }
+    }
+  }
+}
